@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>進階 2D 幾何 Tutting 舞蹈模擬器 (Pro v7)</title>
+  <style>
+    :root {
+      --bg-color: #08080a;
+      --panel-bg: #121216;
+      --border-color: #22222a;
+      --text-main: #ffffff;
+      --text-muted: #666673;
+      --accent-glow: #00ffcc;
+      --accent-dim: rgba(0, 255, 204, 0.2);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    /* 頂部狀態列 */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border-color);
+      background: rgba(8, 8, 10, 0.8);
+      backdrop-filter: blur(10px);
+      z-index: 10;
+    }
+
+    .brand {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    .status-container {
+      display: flex;
+      gap: 16px;
+      font-size: 11px;
+      letter-spacing: 1px;
+    }
+
+    .status-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .status-label { color: var(--text-muted); text-transform: uppercase; }
+    .status-val { font-weight: bold; transition: color 0.2s ease; }
+    .status-val.triggered { color: var(--accent-glow); text-shadow: 0 0 8px var(--accent-glow); }
+
+    /* 畫布區域 */
+    .canvas-container {
+      flex: 1;
+      position: relative;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background-color: var(--bg-color);
+    }
+
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* 下方控制面板 */
+    .control-panel {
+      background-color: var(--panel-bg);
+      border-top: 1px solid var(--border-color);
+      padding: 16px 20px calc(16px + env(safe-area-inset-bottom));
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .panel-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    /* 模式切換與功能按鈕通用樣式 (符合行動端 44x44px 以上規範) */
+    .btn-group {
+      display: flex;
+      background: var(--bg-color);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 2px;
+    }
+
+    .btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      padding: 0 16px;
+      height: 44px;
+      min-width: 60px;
+      border-radius: 4px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .btn:active {
+      background-color: rgba(255, 255, 255, 0.05);
+      transform: scale(0.98);
+    }
+
+    .btn.active {
+      background-color: var(--text-main);
+      color: var(--bg-color);
+    }
+
+    .btn-accent {
+      border: 1px solid var(--border-color);
+      background: transparent;
+      color: var(--text-main);
+    }
+    .btn-accent:active {
+      background: rgba(255, 255, 255, 0.1);
+    }
+    
+    .btn-danger {
+      border: 1px solid rgba(255, 50, 50, 0.3);
+      color: #ff3232;
+    }
+    .btn-danger:active {
+      background: rgba(255, 50, 50, 0.1);
+    }
+
+    /* 時間軸影格導覽軌道 */
+    .timeline-container {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      background: rgba(0,0,0,0.2);
+      padding: 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+    }
+
+    .frame-track {
+      flex: 1;
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 4px 0;
+      scrollbar-width: none; /* Firefox */
+    }
+    .frame-track::-webkit-scrollbar { display: none; } /* Chrome/Safari */
+
+    .frame-node {
+      min-width: 36px;
+      height: 36px;
+      border-radius: 4px;
+      border: 1px solid var(--border-color);
+      background: var(--bg-color);
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .frame-node.active {
+      border-color: var(--accent-glow);
+      color: var(--accent-glow);
+      box-shadow: 0 0 6px var(--accent-dim);
+    }
+
+    @media (max-width: 600px) {
+      .panel-row {
+        flex-wrap: wrap;
+      }
+      .btn-group { width: 100%; }
+      .btn-group .btn { flex: 1; }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">Tutting Studio</div>
+    <div class="status-container">
+      <div class="status-item">
+        <span class="status-label">Mode:</span>
+        <span class="status-val" id="mode-status">FK</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">Snap:</span>
+        <span class="status-val" id="snap-status">NORMAL</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="canvas-container">
+    <canvas id="motionCanvas"></canvas>
+  </div>
+
+  <div class="control-panel">
+    <div class="panel-row">
+      <div class="btn-group">
+        <button class="btn active" id="btn-fk" onclick="setMode('FK')">FK 模式</button>
+        <button class="btn" id="btn-ik" onclick="setMode('IK')">IK 模式</button>
+      </div>
+      
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-accent" id="btn-play" onclick="togglePlay()">▶ PLAY</button>
+        <button class="btn btn-accent" onclick="addFrame()">＋ 新增影格</button>
+      </div>
+    </div>
+
+    <div class="panel-row">
+      <div class="timeline-container">
+        <span style="font-size:10px; color:var(--text-muted); font-weight:bold; letter-spacing:1px;">FRAMES</span>
+        <div class="frame-track" id="frame-track">
+          </div>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-danger" onclick="deleteCurrentFrame()" style="height:36px; padding:0 10px;">🗑 刪除</button>
+        <button class="btn btn-danger" onclick="clearAllFrames()" style="height:36px; padding:0 10px;">✕ 清除全部</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- 1. 真實系「七頭身」黃金幾何比例常量定義 ---
+    const HEAD_RADIUS = 15; // 頭高為直徑 30px
+    const NECK_LEN = 10;
+    const TORSO = 60;
+    const SHOULDER = 26;    // 單側肩寬
+    const HIP_WIDTH = 18;   // 單側髖寬
+    const UPPER_ARM = 50;
+    const FOREARM = 50;     // 1:1 對稱摺疊設計
+    const HAND = 20;
+    const THIGH = 55;
+    const CALF = 55;        // 1:1 對稱深蹲設計
+    const FOOT = 20;
+
+    // --- 2. 系統基礎核心變數 ---
+    const canvas = document.getElementById('motionCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    let currentMode = 'FK'; // 'FK' 或 'IK'
+    let isPlaying = false;
+    let frames = [];        // 儲存所有影格關節相對角度的陣列
+    let currentFrameIdx = 0;
+    
+    // 動畫引擎時間軸參數
+    let animationTime = 0;
+    const durationPerFrame = 0.8; // 影格過渡時間 (秒)
+    let lastTime = performance.now();
+
+    // 手動切換時的平滑过渡控制
+    let isTransitioning = false;
+    let transitionTime = 0;
+    const transitionDuration = 0.25;
+    let transitionFromAngles = null;
+
+    // 觸控與互動拖曳狀態
+    let activeHandle = null;
+    let hitRadius = 26; // 行動端防誤觸最佳化判定半徑
+    let hasSnappedThisFrame = false;
+    let snappedJointId = null;
+
+    // 骨骼相對角度資料結構模板（全部採用弧度制）
+    const defaultAngles = {
+      // 左臂：經典對稱 Tutting 折線 (肩膀 180°, 手肘 -90°, 手腕 90°)
+      left_shoulder: Math.PI,
+      left_elbow: -Math.PI / 2,
+      left_wrist: Math.PI / 2,
+      // 右臂：經典對稱 Tutting 折線 (肩膀 0°, 手肘 90°, 手腕 -90°)
+      right_shoulder: 0,
+      right_elbow: Math.PI / 2,
+      right_wrist: -Math.PI / 2,
+      // 下半身：直立站姿 (雙膝打直 0°, 髖部垂直向下 90°, 腳掌水平)
+      left_hip: Math.PI / 2,
+      left_knee: 0,
+      left_ankle: Math.PI / 2, // 絕對朝左 180°
+      right_hip: Math.PI / 2,
+      right_knee: 0,
+      right_ankle: -Math.PI / 2 // 絕對朝右 0°
+    };
+
+    // 當前渲染時使用的關節相對角度 (Visual State)
+    let currentAngles = { ...defaultAngles };
+
+    // --- 3. 幾何正向運動學 (FK) 位置推算引擎 ---
+    function computePositions(angles) {
+      // 依據畫布動態計算物理重心錨點 (Pelvis) 確保不踩底
+      const pelvis = { x: canvas.width / 2, y: canvas.height / 2 + 50 };
+      
+      // 軀幹向上延伸
+      const shoulder_center = { x: pelvis.x, y: pelvis.y - TORSO };
+      const neck_end = { x: shoulder_center.x, y: shoulder_center.y - NECK_LEN };
+      const head_center = { x: neck_end.x, y: neck_end.y - HEAD_RADIUS };
+
+      // 肩膀左右基底
+      const left_shoulder_base = { x: shoulder_center.x - SHOULDER, y: shoulder_center.y };
+      const right_shoulder_base = { x: shoulder_center.x + SHOULDER, y: shoulder_center.y };
+
+      // 髖部左右基底
+      const left_hip_base = { x: pelvis.x - HIP_WIDTH, y: pelvis.y };
+      const right_hip_base = { x: pelvis.x + HIP_WIDTH, y: pelvis.y };
+
+      // --- 左臂鏈結計算 ---
+      const abs_L_shoulder = angles.left_shoulder;
+      const L_elbow = {
+        x: left_shoulder_base.x + Math.cos(abs_L_shoulder) * UPPER_ARM,
+        y: left_shoulder_base.y + Math.sin(abs_L_shoulder) * UPPER_ARM
+      };
+      const abs_L_elbow = abs_L_shoulder + angles.left_elbow;
+      const L_wrist = {
+        x: L_elbow.x + Math.cos(abs_L_elbow) * FOREARM,
+        y: L_elbow.y + Math.sin(abs_L_elbow) * FOREARM
+      };
+      const abs_L_wrist = abs_L_elbow + angles.left_wrist;
+      const L_hand = {
+        x: L_wrist.x + Math.cos(abs_L_wrist) * HAND,
+        y: L_wrist.y + Math.sin(abs_L_wrist) * HAND
+      };
+
+      // --- 右臂鏈結計算 ---
+      const abs_R_shoulder = angles.right_shoulder;
+      const R_elbow = {
+        x: right_shoulder_base.x + Math.cos(abs_R_shoulder) * UPPER_ARM,
+        y: right_shoulder_base.y + Math.sin(abs_R_shoulder) * UPPER_ARM
+      };
+      const abs_R_elbow = abs_R_shoulder + angles.right_elbow;
+      const R_wrist = {
+        x: R_elbow.x + Math.cos(abs_R_elbow) * FOREARM,
+        y: R_elbow.y + Math.sin(abs_R_elbow) * FOREARM
+      };
+      const abs_R_wrist = abs_R_elbow + angles.right_wrist;
+      const R_hand = {
+        x: R_wrist.x + Math.cos(abs_R_wrist) * HAND,
+        y: R_wrist.y + Math.sin(abs_R_wrist) * HAND
+      };
+
+      // --- 左腿鏈結計算 ---
+      const abs_L_hip = angles.left_hip;
+      const L_knee = {
+        x: left_hip_base.x + Math.cos(abs_L_hip) * THIGH,
+        y: left_hip_base.y + Math.sin(abs_L_hip) * THIGH
+      };
+      const abs_L_knee = abs_L_hip + angles.left_knee;
+      const L_ankle = {
+        x: L_knee.x + Math.cos(abs_L_knee) * CALF,
+        y: L_knee.y + Math.sin(abs_L_knee) * CALF
+      };
+      const abs_L_ankle = abs_L_knee + angles.left_ankle;
+      const L_foot = {
+        x: L_ankle.x + Math.cos(abs_L_ankle) * FOOT,
+        y: L_ankle.y + Math.sin(abs_L_ankle) * FOOT
+      };
+
+      // --- 右腿鏈結計算 ---
+      const abs_R_hip = angles.right_hip;
+      const R_knee = {
+        x: right_hip_base.x + Math.cos(abs_R_hip) * THIGH,
+        y: right_hip_base.y + Math.sin(abs_R_hip) * THIGH
+      };
+      const abs_R_knee = abs_R_hip + angles.right_knee;
+      const R_ankle = {
+        x: R_knee.x + Math.cos(abs_R_knee) * CALF,
+        y: R_knee.y + Math.sin(abs_R_knee) * CALF
+      };
+      const abs_R_ankle = abs_R_knee + angles.right_ankle;
+      const R_foot = {
+        x: R_ankle.x + Math.cos(abs_R_ankle) * FOOT,
+        y: R_ankle.y + Math.sin(abs_R_ankle) * FOOT
+      };
+
+      return {
+        pelvis, shoulder_center, neck_end, head_center,
+        left_shoulder_base, right_shoulder_base, left_hip_base, right_hip_base,
+        left_elbow: L_elbow, left_wrist: L_wrist, left_hand: L_hand,
+        right_elbow: R_elbow, right_wrist: R_wrist, right_hand: R_hand,
+        left_knee: L_knee, left_ankle: L_ankle, left_foot: L_foot,
+        right_knee: R_knee, right_ankle: R_ankle, right_foot: R_foot
+      };
+    }
+
+    // --- 4. 完美 Tutting 角度自動吸附 (Angle Snapping) 演算法 ---
+    function snapAngle(angle) {
+      const step = Math.PI / 4; // 45 度的弧度單位
+      const tolerance = 5 * Math.PI / 180; // 允許容許誤差範圍正負 5 度
+      
+      // 規範化角度至 -PI 到 PI 之間
+      let normalized = Math.atan2(Math.sin(angle), Math.cos(angle));
+      let closestMultiplier = Math.round(normalized / step);
+      let targetAngle = closestMultiplier * step;
+      
+      let diff = Math.abs(Math.atan2(Math.sin(normalized - targetAngle), Math.cos(normalized - targetAngle)));
+      if (diff <= tolerance) {
+        return { snapped: true, angle: Math.atan2(Math.sin(targetAngle), Math.cos(targetAngle)) };
+      }
+      return { snapped: false, angle: angle };
+    }
+
+    // --- 5. FABRIK 雙節骨骼逆向運動學解算器 (安全鎖邊界優化版) ---
+    function solveFABRIK(base, joint, end, target, len1, len2) {
+      let p0 = { ...base };
+      let p1 = { ...joint };
+      let p2 = { ...end };
+      let t = { ...target };
+
+      let dx = t.x - p0.x;
+      let dy = t.y - p0.y;
+      let dist = Math.hypot(dx, dy);
+      const totalLen = len1 + len2;
+
+      // 邊界安全鎖：超出最大伸展範圍時，將骨骼鎖定在最大直線路徑上
+      if (dist >= totalLen) {
+        p1.x = p0.x + (dx / dist) * len1;
+        p1.y = p0.y + (dy / dist) * len1;
+        p2.x = p0.x + (dx / dist) * totalLen;
+        p2.y = p0.y + (dy / dist) * totalLen;
+      } else {
+        // 內合範圍內，執行 FABRIK 前向與後向疊代解算
+        for (let i = 0; i < 4; i++) {
+          // Backward Stage: 從末端效應器反推回基底
+          p2.x = t.x; p2.y = t.y;
+          let d1 = Math.hypot(p1.x - p2.x, p1.y - p2.y) || 1;
+          p1.x = p2.x + ((p1.x - p2.x) / d1) * len2;
+          p1.y = p2.y + ((p1.y - p2.y) / d1) * len2;
+
+          // Forward Stage: 從固定基底順推回末端
+          let d2 = Math.hypot(p1.x - p0.x, p1.y - p0.y) || 1;
+          p1.x = p0.x + ((p1.x - p0.x) / d2) * len1;
+          p1.y = p0.y + ((p1.y - p0.y) / d2) * len1;
+
+          let d3 = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1;
+          p2.x = p1.x + ((p2.x - p1.x) / d3) * len2;
+          p2.y = p1.y + ((p2.y - p1.y) / d3) * len2;
+        }
+      }
+
+      // 回推骨骼絕對角度
+      let abs_ang1 = Math.atan2(p1.y - p0.y, p1.x - p0.x);
+      let abs_ang2 = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+
+      // 計算子骨骼相對角度
+      let rel_ang1 = abs_ang1; 
+      let rel_ang2 = abs_ang2 - abs_ang1;
+
+      // 導入吸附判定
+      let snap1 = snapAngle(rel_ang1);
+      let snap2 = snapAngle(rel_ang2);
+
+      if (snap1.snapped) { rel_ang1 = snap1.angle; hasSnappedThisFrame = true; }
+      if (snap2.snapped) { rel_ang2 = snap2.angle; hasSnappedThisFrame = true; }
+
+      return { rel1: rel_ang1, rel2: rel_ang2 };
+    }
+
+    // --- 6. 互動關節判定核心與手勢對齊映射 ---
+    function getInteractionHandles(pos) {
+      // 根據 FK 或 IK 模式配置不同的可拖曳控制點
+      if (currentMode === 'IK') {
+        return [
+          { id: 'left_arm_ik', x: pos.left_wrist.x, y: pos.left_wrist.y, mode: 'IK_ARM_L' },
+          { id: 'right_arm_ik', x: pos.right_wrist.x, y: pos.right_wrist.y, mode: 'IK_ARM_R' },
+          { id: 'left_leg_ik', x: pos.left_ankle.x, y: pos.left_ankle.y, mode: 'IK_LEG_L' },
+          { id: 'right_leg_ik', x: pos.right_ankle.x, y: pos.right_ankle.y, mode: 'IK_LEG_R' },
+          // 手掌與腳掌在 IK 下維持 FK 微調連動
+          { id: 'left_wrist', x: pos.left_hand.x, y: pos.left_hand.y, mode: 'FK_SINGLE', bone: 'left_wrist', parentPos: pos.left_wrist, prevAbs: (angles)=>angles.left_shoulder + angles.left_elbow },
+          { id: 'right_wrist', x: pos.right_hand.x, y: pos.right_hand.y, mode: 'FK_SINGLE', bone: 'right_wrist', parentPos: pos.right_wrist, prevAbs: (angles)=>angles.right_shoulder + angles.right_elbow },
+          { id: 'left_ankle', x: pos.left_foot.x, y: pos.left_foot.y, mode: 'FK_SINGLE', bone: 'left_ankle', parentPos: pos.left_ankle, prevAbs: (angles)=>angles.left_hip + angles.left_knee },
+          { id: 'right_ankle', x: pos.right_foot.x, y: pos.right_foot.y, mode: 'FK_SINGLE', bone: 'right_ankle', parentPos: pos.right_ankle, prevAbs: (angles)=>angles.right_hip + angles.right_knee }
+        ];
+      } else {
+        return [
+          { id: 'left_shoulder', x: pos.left_elbow.x, y: pos.left_elbow.y, mode: 'FK_SINGLE', bone: 'left_shoulder', parentPos: pos.left_shoulder_base, prevAbs: ()=>0 },
+          { id: 'left_elbow', x: pos.left_wrist.x, y: pos.left_wrist.y, mode: 'FK_SINGLE', bone: 'left_elbow', parentPos: pos.left_elbow, prevAbs: (angles)=>angles.left_shoulder },
+          { id: 'left_wrist', x: pos.left_hand.x, y: pos.left_hand.y, mode: 'FK_SINGLE', bone: 'left_wrist', parentPos: pos.left_wrist, prevAbs: (angles)=>angles.left_shoulder + angles.left_elbow },
+          
+          { id: 'right_shoulder', x: pos.right_elbow.x, y: pos.right_elbow.y, mode: 'FK_SINGLE', bone: 'right_shoulder', parentPos: pos.right_shoulder_base, prevAbs: ()=>0 },
+          { id: 'right_elbow', x: pos.right_wrist.x, y: pos.right_wrist.y, mode: 'FK_SINGLE', bone: 'right_elbow', parentPos: pos.right_elbow, prevAbs: (angles)=>angles.right_shoulder },
+          { id: 'right_wrist', x: pos.right_hand.x, y: pos.right_hand.y, mode: 'FK_SINGLE', bone: 'right_wrist', parentPos: pos.right_wrist, prevAbs: (angles)=>angles.right_shoulder + angles.right_elbow },
+          
+          { id: 'left_hip', x: pos.left_knee.x, y: pos.left_knee.y, mode: 'FK_SINGLE', bone: 'left_hip', parentPos: pos.left_hip_base, prevAbs: ()=>0 },
+          { id: 'left_knee', x: pos.left_ankle.x, y: pos.left_ankle.y, mode: 'FK_SINGLE', bone: 'left_knee', parentPos: pos.left_knee, prevAbs: (angles)=>angles.left_hip },
+          { id: 'left_ankle', x: pos.left_foot.x, y: pos.left_foot.y, mode: 'FK_SINGLE', bone: 'left_ankle', parentPos: pos.left_ankle, prevAbs: (angles)=>angles.left_hip + angles.left_knee },
+
+          { id: 'right_hip', x: pos.right_knee.x, y: pos.right_knee.y, mode: 'FK_SINGLE', bone: 'right_hip', parentPos: pos.right_hip_base, prevAbs: ()=>0 },
+          { id: 'right_knee', x: pos.right_ankle.x, y: pos.right_ankle.y, mode: 'FK_SINGLE', bone: 'right_knee', parentPos: pos.right_knee, prevAbs: (angles)=>angles.right_hip },
+          { id: 'right_ankle', x: pos.right_foot.x, y: pos.right_foot.y, mode: 'FK_SINGLE', bone: 'right_ankle', parentPos: pos.right_ankle, prevAbs: (angles)=>angles.right_hip + angles.right_knee }
+        ];
+      }
+    }
+
+    // --- 7. 優化過的角度線性內插 (Shortest Path Angular LERP) ---
+    function lerpAngle(from, to, t) {
+      let diff = to - from;
+      // 利用 Math.atan2 搭配正弦餘弦進行數值規整，完美解決跨越正負 PI 臨界點時瘋狂旋轉的 Bug
+      diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+      return from + diff * t;
+    }
+
+    function interpolateAngles(frameA, frameB, t) {
+      let result = {};
+      for (let key in frameA) {
+        result[key] = lerpAngle(frameA[key], frameB[key], t);
+      }
+      return result;
+    }
+
+    // --- 8. 核心畫布渲染常式 ---
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // 繪製極暗十字幾何對齊基準線
+      ctx.strokeStyle = '#111116';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(canvas.width / 2, 0); ctx.lineTo(canvas.width / 2, canvas.height);
+      ctx.moveTo(0, canvas.height / 2 + 50); ctx.lineTo(canvas.width, canvas.height / 2 + 50);
+      ctx.stroke();
+
+      const pos = computePositions(currentAngles);
+
+      // 設定骨骼渲染光效與風格線條
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 4;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      // 1. 繪製中心中軸線（頭部、頸部、軀幹）
+      ctx.beginPath();
+      ctx.arc(pos.head_center.x, pos.head_center.y, HEAD_RADIUS, 0, Math.PI * 2); // 空心圓頭部
+      ctx.moveTo(pos.neck_end.x, pos.neck_end.y);
+      ctx.lineTo(pos.shoulder_center.x, pos.shoulder_center.y); // 頸
+      ctx.lineTo(pos.pelvis.x, pos.pelvis.y); // 軀幹
+      ctx.stroke();
+
+      // 2. 肩線與髖線支架
+      ctx.beginPath();
+      ctx.moveTo(pos.left_shoulder_base.x, pos.left_shoulder_base.y);
+      ctx.lineTo(pos.right_shoulder_base.x, pos.right_shoulder_base.y);
+      ctx.moveTo(pos.left_hip_base.x, pos.left_hip_base.y);
+      ctx.lineTo(pos.right_hip_base.x, pos.right_hip_base.y);
+      ctx.stroke();
+
+      // 3. 四肢骨骼鏈繪製常式
+      const drawBoneChain = (pts) => {
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for(let i=1; i<pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+        ctx.stroke();
+      };
+
+      drawBoneChain([pos.left_shoulder_base, pos.left_elbow, pos.left_wrist, pos.left_hand]);
+      drawBoneChain([pos.right_shoulder_base, pos.right_elbow, pos.right_wrist, pos.right_hand]);
+      drawBoneChain([pos.left_hip_base, pos.left_knee, pos.left_ankle, pos.left_foot]);
+      drawBoneChain([pos.right_hip_base, pos.right_knee, pos.right_ankle, pos.right_foot]);
+
+      // 4. 控制點關節幾何高亮渲染
+      const handles = getInteractionHandles(pos);
+      handles.forEach(h => {
+        let isSnapped = (snappedJointId === h.id && hasSnappedThisFrame);
+        
+        ctx.beginPath();
+        // 若觸發幾何吸附，節點擴大半徑、顏色轉為螢光青綠色，並賦予數位發光霓虹特效
+        if (isSnapped) {
+          ctx.fillStyle = '#00ffcc';
+          ctx.shadowBlur = 12;
+          ctx.shadowColor = '#00ffcc';
+          ctx.arc(h.x, h.y, 7, 0, Math.PI * 2);
+        } else {
+          ctx.fillStyle = '#ffffff';
+          ctx.shadowBlur = 0;
+          ctx.arc(h.x, h.y, 4, 0, Math.PI * 2);
+        }
+        ctx.fill();
+        ctx.shadowBlur = 0; // 重設影子
+      });
+    }
+
+    // --- 9. Time-based 主循環驅動引擎 ---
+    function updateEngine() {
+      const now = performance.now();
+      const dt = (now - lastTime) / 1000;
+      lastTime = now;
+
+      if (isPlaying && frames.length > 0) {
+        animationTime += dt;
+        if (animationTime >= durationPerFrame) {
+          animationTime -= durationPerFrame;
+          currentFrameIdx = (currentFrameIdx + 1) % frames.length;
+          updateTimelineUI();
+        }
+        
+        let nextFrameIdx = (currentFrameIdx + 1) % frames.length;
+        let t = animationTime / durationPerFrame;
+        
+        // 經由防邊界自轉 LERP 計算當前過渡姿態
+        currentAngles = interpolateAngles(frames[currentFrameIdx], frames[nextFrameIdx], t);
+      } else if (isTransitioning) {
+        // 非播放狀態下，手動切換關鍵影格的平滑過渡
+        transitionTime += dt;
+        let t = Math.min(transitionTime / transitionDuration, 1);
+        let targetAngles = frames[currentFrameIdx];
+        currentAngles = interpolateAngles(transitionFromAngles, targetAngles, t);
+        
+        if (t >= 1) isTransitioning = false;
+      }
+
+      // 狀態列同步提示
+      const snapStatusText = document.getElementById('snap-status');
+      if (hasSnappedThisFrame) {
+        snapStatusText.innerText = 'TRIGGERED';
+        snapStatusText.classList.add('triggered');
+      } else {
+        snapStatusText.innerText = 'NORMAL';
+        snapStatusText.classList.remove('triggered');
+      }
+
+      draw();
+      requestAnimationFrame(updateEngine);
+    }
+
+    // --- 10. 互動手勢（滑鼠與行動觸控）事件監聽處理 ---
+    function getCanvasCoords(e) {
+      const rect = canvas.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      return {
+        x: clientX - rect.left,
+        y: clientY - rect.top
+      };
+    }
+
+    function handleStart(e) {
+      if (isPlaying) return;
+      const m = getCanvasCoords(e);
+      const pos = computePositions(currentAngles);
+      const handles = getInteractionHandles(pos);
+
+      // 尋找點擊命中之最接近關節點
+      let closest = null;
+      let minDist = hitRadius; // 26px 判定半徑
+
+      handles.forEach(h => {
+        let d = Math.hypot(h.x - m.x, h.y - m.y);
+        if (d < minDist) {
+          minDist = d;
+          closest = h;
+        }
+      });
+
+      if (closest) {
+        activeHandle = closest;
+        hasSnappedThisFrame = false;
+        snappedJointId = closest.id;
+        if(e.cancelable) e.preventDefault();
+      }
+    }
+
+    function handleMove(e) {
+      if (!activeHandle || isPlaying) return;
+      const m = getCanvasCoords(e);
+      hasSnappedThisFrame = false;
+
+      let targetFrame = frames[currentFrameIdx];
+
+      if (activeHandle.mode === 'FK_SINGLE') {
+        // FK 模式：根據觸控點與父階層關節的相對角度，推算單一關節旋轉
+        let pPos = activeHandle.parentPos;
+        let absAngle = Math.atan2(m.y - pPos.y, m.x - pPos.x);
+        let relAngle = absAngle - activeHandle.prevAbs(targetFrame);
+
+        // 套用幾何吸附機制
+        let snapRes = snapAngle(relAngle);
+        if (snapRes.snapped) {
+          relAngle = snapRes.angle;
+          hasSnappedThisFrame = true;
+        }
+        targetFrame[activeHandle.bone] = relAngle;
+
+      } else if (activeHandle.mode === 'IK_ARM_L') {
+        const pos = computePositions(targetFrame);
+        let res = solveFABRIK(pos.left_shoulder_base, pos.left_elbow, pos.left_wrist, m, UPPER_ARM, FOREARM);
+        targetFrame.left_shoulder = res.rel1;
+        targetFrame.left_elbow = res.rel2;
+      } else if (activeHandle.mode === 'IK_ARM_R') {
+        const pos = computePositions(targetFrame);
+        let res = solveFABRIK(pos.right_shoulder_base, pos.right_elbow, pos.right_wrist, m, UPPER_ARM, FOREARM);
+        targetFrame.right_shoulder = res.rel1;
+        targetFrame.right_elbow = res.rel2;
+      } else if (activeHandle.mode === 'IK_LEG_L') {
+        const pos = computePositions(targetFrame);
+        let res = solveFABRIK(pos.left_hip_base, pos.left_knee, pos.left_ankle, m, THIGH, CALF);
+        targetFrame.left_hip = res.rel1;
+        targetFrame.left_knee = res.rel2;
+      } else if (activeHandle.mode === 'IK_LEG_R') {
+        const pos = computePositions(targetFrame);
+        let res = solveFABRIK(pos.right_hip_base, pos.right_knee, pos.right_ankle, m, THIGH, CALF);
+        targetFrame.right_hip = res.rel1;
+        targetFrame.right_knee = res.rel2;
+      }
+
+      currentAngles = { ...targetFrame };
+      if(e.cancelable) e.preventDefault();
+    }
+
+    function handleEnd() {
+      activeHandle = null;
+    }
+
+    // --- 11. UI 與時間軸排版控制模組 ---
+    function resizeCanvas() {
+      const container = canvas.parentElement;
+      canvas.width = container.clientWidth;
+      canvas.height = container.clientHeight;
+      draw();
+    }
+
+    function setMode(mode) {
+      currentMode = mode;
+      document.getElementById('btn-fk').classList.toggle('active', mode === 'FK');
+      document.getElementById('btn-ik').classList.toggle('active', mode === 'IK');
+      document.getElementById('mode-status').innerText = mode;
+    }
+
+    function togglePlay() {
+      isPlaying = !isPlaying;
+      document.getElementById('btn-play').innerText = isPlaying ? '⏸ PAUSE' : '▶ PLAY';
+      if (isPlaying) {
+        animationTime = 0;
+        lastTime = performance.now();
+      }
+    }
+
+    function addFrame() {
+      // 複製目前影格的資料結構，並插入到當前位置之後
+      let copy = { ...frames[currentFrameIdx] };
+      frames.splice(currentFrameIdx + 1, 0, copy);
+      currentFrameIdx++;
+      updateTimelineUI();
+    }
+
+    function deleteCurrentFrame() {
+      if (frames.length <= 1) return; // 至少保留一格
+      frames.splice(currentFrameIdx, 1);
+      if (currentFrameIdx >= frames.length) currentFrameIdx = frames.length - 1;
+      triggerTransition();
+      updateTimelineUI();
+    }
+
+    function clearAllFrames() {
+      frames = [{ ...defaultAngles }];
+      currentFrameIdx = 0;
+      isPlaying = false;
+      document.getElementById('btn-play').innerText = '▶ PLAY';
+      triggerTransition();
+      updateTimelineUI();
+    }
+
+    function selectFrame(idx) {
+      if (isPlaying) return;
+      currentFrameIdx = idx;
+      triggerTransition();
+      updateTimelineUI();
+    }
+
+    function triggerTransition() {
+      isTransitioning = true;
+      transitionTime = 0;
+      transitionFromAngles = { ...currentAngles };
+    }
+
+    function updateTimelineUI() {
+      const track = document.getElementById('frame-track');
+      track.innerHTML = '';
+      frames.forEach((f, idx) => {
+        const node = document.createElement('div');
+        node.className = `frame-node ${idx === currentFrameIdx ? 'active' : ''}`;
+        node.innerText = idx + 1;
+        node.onclick = () => selectFrame(idx);
+        track.appendChild(node);
+      });
+    }
+
+    // 初始系統註冊與尺寸重繪綁定
+    window.addEventListener('resize', resizeCanvas);
+    
+    canvas.addEventListener('mousedown', handleStart);
+    canvas.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleEnd);
+
+    canvas.addEventListener('touchstart', handleStart, { passive: false });
+    canvas.addEventListener('touchmove', handleMove, { passive: false });
+    window.addEventListener('touchend', handleEnd);
+
+    // 啟動初始化姿態
+    frames.push({ ...defaultAngles });
+    resizeCanvas();
+    updateTimelineUI();
+    requestAnimationFrame(updateEngine);
+  </script>
+</body>
+</html>
